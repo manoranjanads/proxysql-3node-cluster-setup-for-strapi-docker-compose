@@ -1,0 +1,70 @@
+version: '3'
+
+services:
+  proxysql:
+    image: severalnines/proxysql
+    volumes:
+      - ./proxysql.cnf:/etc/proxysql.cnf
+    ports:
+      - '6032:6032'
+      - '6033:6033'
+    links:
+      - db-primary
+      - db-secondary
+
+  db-primary:
+    build:
+      context: .
+      dockerfile: db/primary/Dockerfile
+    # image: mysql:5.7
+    ports:
+      - "3306:3306"
+    volumes:
+      - db-data:/var/lib/mysql
+      - ./db/init/:/docker-entrypoint-initdb.d/
+    environment:
+      MYSQL_ALLOW_EMPTY_PASSWORD: 1
+      MYSQL_DATABASE: hoge
+      MYSQL_USER: proxysql
+      MYSQL_PASSWORD: pass
+      TZ: "Asia/Colombo"
+
+  db-secondary:
+    build:
+      context: .
+      dockerfile: db/secondary/Dockerfile
+    ports:
+      - '13306:3306'
+    depends_on:
+      - db-primary
+    tmpfs: /var/lib/mysql
+    volumes:
+      - ./db/secondary/start-secondary.sh:/docker-entrypoint-initdb.d/start-secondary.sh
+    environment:
+      MYSQL_ALLOW_EMPTY_PASSWORD: 1
+      MYSQL_USER: proxysql
+      MYSQL_PASSWORD: pass
+      TZ: "Asia/Colombo"
+
+  strapi:
+    image: strapi/strapi
+    environment:
+      DATABASE_CLIENT: mysql
+      DATABASE_HOST: proxysql
+      DATABASE_PORT: 6033
+      DATABASE_NAME: hoge
+      DATABASE_USERNAME: proxysql
+      DATABASE_PASSWORD: pass
+      DATABASE_SSL: 'false'
+    volumes:
+      - ./app:/srv/app
+    ports:
+      - "1337:1337"
+    depends_on:
+      - proxysql
+      - db-primary
+      - db-secondary
+    restart: on-failure
+
+volumes:
+  db-data: {}
